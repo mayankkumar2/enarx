@@ -986,6 +986,7 @@ name = "wasmldr"
 version = "0.2.1"
 dependencies = [
  "anyhow",
+ "cap-std",
  "env_logger",
  "log",
  "serde",

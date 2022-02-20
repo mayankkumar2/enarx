@@ -3,7 +3,10 @@
 use crate::config;
 
 use log::debug;
-use wasmtime_wasi::sync::{TcpListener, WasiCtxBuilder};
+use wasmtime_wasi::{
+    net::Socket,
+    sync::{TcpListener, WasiCtxBuilder},
+};
 
 /// The error codes of workload execution.
 // clippy doesn't like how "ConfigurationError" ends with "Error", so..
@@ -122,7 +125,9 @@ pub fn run(bytes: impl AsRef<[u8]>, ldr_config: &config::Config) -> Result<Vec<w
     }
 
     let mut num_fd = 3;
+    let mut num_unix_fd = 0u32;
     let mut fd_names: Vec<String> = Vec::new();
+    let mut fd_unix_names: Vec<String> = Vec::new();
 
     if let Some(ref files) = ldr_config.files {
         for file in files {
@@ -140,8 +145,27 @@ pub fn run(bytes: impl AsRef<[u8]>, ldr_config: &config::Config) -> Result<Vec<w
 
                     wasi = wasi.preopened_socket(num_fd, TcpListener::from_std(stdlistener))?;
                     num_fd += 1;
-                    wasi = wasi.env("LISTEN_FDS", &(num_fd - 3).to_string())?;
+                    wasi = wasi.env("LISTEN_FDS", &(num_fd - 3 - num_unix_fd).to_string())?;
                     fd_names.push(file.name.clone())
+                }
+                "unix_listener" => {
+                    let path = file
+                        .path
+                        .as_ref()
+                        .expect("Config file `unix_listener` has no `path` field set")
+                        .clone();
+                    let std_listener = std::os::unix::net::UnixListener::bind(&path)
+                        .unwrap_or_else(|e| panic!("Could not bind to `{path}`: {e}"));
+                    std_listener
+                        .set_nonblocking(true)
+                        .expect("Could not set nonblocking on UnixListener");
+                    let cap_std_listener =
+                        cap_std::os::unix::net::UnixListener::from_std(std_listener);
+                    wasi = wasi.preopened_socket(num_fd, Socket::from(cap_std_listener))?;
+                    num_fd += 1;
+                    num_unix_fd += 1;
+                    wasi = wasi.env("UNIX_LISTEN_FDS", num_unix_fd.to_string().as_str())?;
+                    fd_unix_names.push(file.name.clone());
                 }
                 "stdio" => {}
                 field => {
@@ -151,6 +175,9 @@ pub fn run(bytes: impl AsRef<[u8]>, ldr_config: &config::Config) -> Result<Vec<w
         }
         if !fd_names.is_empty() {
             wasi = wasi.env("LISTEN_FDNAMES", &fd_names.join(":"))?;
+        }
+        if !fd_unix_names.is_empty() {
+            wasi = wasi.env("UNIX_LISTEN_FDNAMES", &fd_unix_names.join(":"))?;
         }
     }
 

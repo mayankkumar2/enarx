@@ -14,6 +14,7 @@ pub struct File {
     pub name: String,
     pub addr: Option<String>,
     pub port: Option<u16>,
+    pub path: Option<String>,
 }
 
 impl Default for Config {
@@ -25,18 +26,21 @@ impl Default for Config {
                     name: "stdin".to_string(),
                     addr: None,
                     port: None,
+                    path: None,
                 },
                 File {
                     type_: "stdio".to_string(),
                     name: "stdout".to_string(),
                     addr: None,
                     port: None,
+                    path: None,
                 },
                 File {
                     type_: "stdio".to_string(),
                     name: "stderr".to_string(),
                     addr: None,
                     port: None,
+                    path: None,
                 },
             ]),
         }
